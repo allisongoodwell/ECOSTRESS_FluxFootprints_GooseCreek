@@ -1,0 +1,20 @@
+﻿25m,10m,operation10,new,min,max,unit,qualflag10
+rslt_wnd_spd,wind_speed,none,WS,0,20,m_per_sec,
+LE_li_wpl,LE,none,LE,-200,800,W_per_m2,qc_LE
+Hc_li,H,none,H,-200,800,W_per_m2,qc_H
+RH_tmpr_rh_mean,RH,none,RH,0,100,percent,
+Fc_li_wpl,co2_flux,Fc,Fc,-2,1,mg/(m^2 s),qc_co2_flux
+T_tmpr_rh_mean,air_temperature,KtoC,Ta,-30,60,C,
+amb_press_li_mean,air_pressure,div1000,Pair,98,102,kPa,
+rho_a_tmpr_rh_mean,air_density,none,rho,1.1,1.4,kg/m3,
+wnd_dir_compass,wind_dir,none,WD,0,365,deg,
+tau,Tau,none,tau,-2,2,kg/m2s,
+u_star,u*,none,ustar,0,1.5,m/s,
+e_tmpr_rh_mean,e,div1000,e,0,6,kPa,
+e_sat_tmpr_rh_mean,es,div1000,esat,0,6,kPa,
+Ux_stdev,u_var,sqrt,ustd,0,3,m/s,
+Uy_stdev,v_var,sqrt,vstd,0,3,m/s,
+Uz_stdev,w_var,sqrt,wstd,0,2,m/s,
+Tc_li_stdev,ts_var,sqrt,tstd,0,1,C,
+CO2_li_stdev,co2_var,sqrtFc,co2std,0,6,mg/(m^2),
+H2O_li_stdev,h2o_var,sqrtH2O,h2ostd,0,6,g/(m^2),
