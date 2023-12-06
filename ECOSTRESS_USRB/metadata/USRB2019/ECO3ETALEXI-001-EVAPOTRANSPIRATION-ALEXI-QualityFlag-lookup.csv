@@ -1,0 +1,4 @@
+Value,Pixel computed,Good quality LSTE available,Good quality Surface Reflectance data available,ALEXI data available,"Other (land pixel, etc.)"
+0,yes,yes,yes,yes,yes
+1,no,yes,yes,yes,yes
+4,yes,yes,no,yes,yes
