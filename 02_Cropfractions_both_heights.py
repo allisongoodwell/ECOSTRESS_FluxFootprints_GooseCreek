@@ -87,7 +87,13 @@ def cropfractions(crop_frames, FFC_list, date_list, tower_coords, dx):
 
         f_soy = np.nansum([x for i,x in enumerate(ffpfracs.flatten()) if crop_arr.flatten()[i] ==2])
         f_corn = np.nansum([x for i,x in enumerate(ffpfracs.flatten()) if crop_arr.flatten()[i] ==1])
+        
+        #f_corn and f_soy should sum to 1
+        tot = f_soy+f_corn
+        f_corn = f_corn/tot
+        f_soy = f_soy/tot
 
+            
         df_out.loc[ffc_date,:] = [ffc_date, A, f_corn, f_soy]
               
     return df_out

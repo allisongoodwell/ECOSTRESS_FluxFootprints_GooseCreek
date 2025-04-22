@@ -35,10 +35,11 @@ tower_lat = 40.1562377
 tower_N = 4446215.92
 tower_E = 365624.55
 
-NxNstr = '49x49'
-df_ALL = pd.read_csv(results_path+'/ECOSTRESS_footprintETvalues_'+NxNstr+'.csv')
+
+#contains gridded averages, single pixel, FFP and tower results for overpasses
+df_ALL = pd.read_csv(results_path+'/ECOSTRESS_footprintETvalues.csv')
 #performance file to be saved as a csv:
-perf_name = results_path+'/Performance_'+NxNstr+'grid.csv'
+perf_name = results_path+'/Performance_gridsizes.csv'
 
 
 df_fractions = pd.read_csv(results_path + '/GC_FootprintFractions.csv')   
@@ -47,21 +48,85 @@ fname_utm = 'ECOSTRESS_USRB/ALEXI_ETdaily/ECO3ETALEXI.001_EVAPOTRANSPIRATION_ALE
 #randomly selected ECOSTRESS image (just to get the easting and northing coordinates for plotting later)
 
 
-df_ALL['Date']=pd.to_datetime(df_ALL['Date'])
+df_ALL['NewDate']=pd.to_datetime(df_ALL['Date'],utc=True).dt.normalize()
+df_ALL['Date']=pd.to_datetime(df_ALL['Date'],utc=True).dt.normalize()
+df_ALL['month']=df_ALL['NewDate'].dt.month
+df_ALL['season']=np.where((df_ALL['month'] < 6) | (df_ALL['month']>9) ,5,25)
+
+#df_ALL['Vis']=df_ALL['VisualInspect']/2+1
+df_ALL['Vis']=3
+
 
 df_ECO_all = df_ALL
 df_ECOSTRESS = df_ALL[(df_ALL['good']==1)]
 df_ECO_allgood = df_ALL.dropna()
 
 
+df_dailyMODEL = pd.read_csv('DATA_Tower/DailyET_Tower_OpenET_Jiaze.csv')
+df_dailyMODEL['NewDate']=pd.to_datetime(df_dailyMODEL['DateTime'],utc=True)
+
+df_dailyMODEL['PTJPL OpenET']=df_dailyMODEL['PT-JPL ET']
+
+df_ALL = pd.merge(df_ALL, df_dailyMODEL, on='NewDate', how='inner')
+
+
 for i,colname in enumerate(df_ALL):
-    if colname != 'Date':
+    if colname != 'Date' and colname != 'NewDate':
         df_ALL[colname] = pd.to_numeric(df_ALL[colname],errors='coerce')
 
     
 #subsets of main dataframe for correlation analysis...
-df_nodate = df_ALL.drop('Date',axis=1)
+df_nodate = df_ALL.drop(['Date','NewDate'],axis=1)
 df_good = df_ALL[df_ALL['good']==1]
+
+df_good = df_good[~np.isnan(df_good['ET25day_EB'])]
+
+
+
+#%%
+# Define the conditions and corresponding labels
+conditions = [
+    (df_good['hour'] >= 6) & (df_good['hour'] < 11),  # Morning: 8-11
+    (df_good['hour'] >= 11) & (df_good['hour'] < 16), # Mid-day: 12-15
+    (df_good['hour'] >= 16) & (df_good['hour'] <= 22) # Afternoon: 16-20
+]
+labels = ['morning', 'mid-day', 'afternoon']
+
+# Create the new column
+df_good['time_of_day'] = np.select(conditions, labels, default='unknown')
+
+data = df_good[['AlexiFFP25','JdayFFP25','PTJPL OpenET','PT Tower','ET25day_EB',]]
+
+data.rename(columns={'AlexiFFP25': 'Alexi-ECO', 'JdayFFP25': 'PT-ECO','PTJPL OpenET':'PT-OpET','PT Tower':'PT-Tower','ET25day_EB':'Tower Obs'}, inplace=True)
+
+g=sns.pairplot(data, height=1,aspect=1,plot_kws={'s': 5})
+
+for ax in g.axes.flatten():
+    if ax is not None:
+        # Get the limits and plot a 1:1 line
+        limits = [
+            min(ax.get_xlim()[0], ax.get_ylim()[0]),
+            max(ax.get_xlim()[1], ax.get_ylim()[1])
+        ]
+        ax.plot(limits, limits, '--', color='gray', alpha=0.7, zorder=0)
+        ax.set_xlim(limits)
+        ax.set_ylim(limits)
+
+for i in range(len(g.axes)):
+    for j in range(i + 1, len(g.axes)):
+        g.axes[i, j].set_visible(False)
+        
+        # Adjust label font size to 7
+for ax in g.axes.flatten():
+    if ax is not None:
+        ax.xaxis.label.set_size(7)
+        ax.yaxis.label.set_size(7)
+        ax.tick_params(axis='both', labelsize=7)
+
+g.fig.set_size_inches(4,4)
+
+plt.savefig("PT_JPL_compareOpenET.svg", format="svg", bbox_inches="tight")
+
 
 
 #%% plot and save figure showing crop-specific differences, RMSE, and ET_ffp for daily products
@@ -75,68 +140,40 @@ df_good['ET_tower']= df_good['ET25day_EB']
 df_good['LE_tower'] = df_good['LE25inst']
 
 
-df_crops = df_good[['ET_tower','LE_tower','JdayCorn','JdaySoy','JinstCorn','JinstSoy','AlexiCorn','AlexiSoy','AlexiFFP25','JdayFFP25','JinstFFP25']]
-df_crops = df_crops.dropna()
-
-cvectET = np.asfarray(df_crops['ET_tower'])
-cvectLE = np.asfarray(df_crops['LE_tower'])
-
-Alexi_err = np.abs(df_crops['AlexiFFP25']-df_crops['ET_tower'])
-JPL_err = np.abs(df_crops['JdayFFP25']-df_crops['ET_tower'])
-JPLinst_err = np.abs(df_crops['JinstFFP25']-df_crops['LE_tower'])
-
-cropdiff_Alexi = (df_crops['AlexiCorn']-df_crops['AlexiSoy'])#/df_crops['AlexiCorn']
-cropdiff_JPL = (df_crops['JdayCorn']-df_crops['JdaySoy'])#/df_crops['JdayCorn']
-
-plt.figure(5,figsize=(6.25,2.5), dpi= 300) 
-plt.subplot(1,2,1)
-plt.scatter(np.asfarray(df_crops['AlexiCorn']/df_crops['AlexiFFP25']),
-            np.asfarray(df_crops['AlexiSoy']/df_crops['AlexiFFP25']),c=Alexi_err, s=25,vmin=0,vmax=5,cmap='Reds',edgecolors='black')
-
-plt.xscale('log')
-plt.yscale('log')
-plt.xlim([.5,2.5])
-plt.ylim([.5,2.5])
-plt.plot([0,2.5],[1,1],'k')
-plt.plot([1,1],[0,2.5],'k')
-plt.xlabel('$\dfrac{ET_{corn}}{ET_{ffc}}$')
-plt.ylabel('$\dfrac{ET_{soy}}{ET_{ffc}}$')
-plt.title('ALEXI',fontsize = 10)
-plt.colorbar()
-
-plt.subplot(1,2,2)
-plt.scatter(np.asfarray(df_crops['JdayCorn']/df_crops['JdayFFP25']),
-            np.asfarray(df_crops['JdaySoy']/df_crops['JdayFFP25']),c=JPL_err, s=25,vmin=0,vmax=5,cmap='Reds',edgecolors='black')
-plt.colorbar()
-
-plt.xscale('log')
-plt.yscale('log')
-plt.xlim([.5,2.5])
-plt.ylim([.5,2.5])
-plt.plot([0,2.5],[1,1],'k')
-plt.plot([1,1],[0,2.5],'k')
-plt.xlabel('$\dfrac{ET_{corn}}{ET_{ffc}}$')
-plt.title('PT-JPL',fontsize = 10)
-
-plt.tight_layout()
-plt.savefig("ALEXI_JPL_cropscatter_"+NxNstr+".pdf", format="pdf", bbox_inches="tight")
-plt.show()
-
-
 #%% performance metrics: KGE, NSE, RMSE, save as a csv file
+
+df_2022only = df_good[df_good['Date'].dt.year>2020]
+df_2022only = df_2022only[(df_2022only['Date'].dt.month >4) & (df_2022only['Date'].dt.month <10)]
+
+
+df_2022only['JPLerr']=np.abs(df_2022only['ET25day_EB']-df_2022only['JdayFFP25'])/df_2022only['ET25day_EB']
+df_2022only['Aerr']=np.abs(df_2022only['ET25day_EB']-df_2022only['AlexiFFP25'])/df_2022only['ET25day_EB']
+#df_2022only = df_2022only[df_2022only['JPLerr']<.5]
+#df_2022only = df_2022only[df_2022only['Aerr']<.5]
+
+df_2022only[['JdayCorn','JdaySoy','AlexiCorn','AlexiSoy','JdayCropDiff','AlexiCropDiff']].describe()
+
+#df_good=df_good[df_good.hour<17]
+df_good=df_good[df_good['JdayET5x5']<10]
+
+
+
+plt.boxplot(df_2022only[['JdayCorn','JdaySoy','AlexiCorn','AlexiSoy']])
 
 obsET = df_good['ET_tower'] #for daily products (mm)
 obsLE = df_good['LE_tower'] #for PT-JPL inst product (W/m2)
 
-sim_list = [df_good['JdayFFP25'],df_good['JdayET1'],df_good['JdayETg'],
-            df_good['AlexiFFP25'],df_good['AlexiET1'],df_good['AlexiETg'],
-            df_good['JinstFFP25'],df_good['JinstET1'],df_good['JinstETg']]
+sim_list = [df_good['JdayFFP25'],df_good['JdayET1x1'],df_good['JdayET5x5'],df_good['JdayET25x25'],df_good['JdayET50x50'],
+            df_good['AlexiFFP25'],df_good['AlexiET1x1'],df_good['AlexiET5x5'],df_good['AlexiET25x25'],df_good['AlexiET50x50'],
+            df_good['JinstFFP25'],df_good['JinstET1x1'],df_good['JinstET5x5'],df_good['JinstET25x25'],df_good['JinstET50x50']]
+
+
 
 df_perf = pd.DataFrame(index=['KGE','corr','alpha','beta','NSE','RMSE'])
 
 for ct,sim in enumerate(sim_list):
   
-    if ct<6:
+    if ct<10:
         df_mini = pd.DataFrame(data = [obsET,sim]).T
     else:
         df_mini = pd.DataFrame(data = [obsLE,sim]).T
@@ -159,11 +196,55 @@ for ct,sim in enumerate(sim_list):
 
 df_perf.to_csv(perf_name,float_format='%.2f')
 
-#%% crop maps, look at "very best" images with all values intact
+metric_opts = ['RMSE', 'alpha','beta']
 
-df_everythinggood = df_good.dropna()
+
+fig, axs =  plt.subplots(3,1,figsize=(3.25,4))
+
+for i,metric in enumerate(metric_opts):
+    ALEXI_ratio=[]
+    JPL_ratio=[]
+    
+    for gridsizes in ['1x1','5x5','25x25','50x50']:
+        ALEXIname = 'AlexiET'+gridsizes
+        JPLname = 'JdayET'+gridsizes
+
+        ALEXI_ratio.append(df_perf[ALEXIname][metric]/df_perf['AlexiFFP25'][metric])
+        JPL_ratio.append(df_perf[JPLname][metric]/df_perf['JdayFFP25'][metric])
+
+    axs[i].plot(JPL_ratio,'-o')
+    axs[i].plot(ALEXI_ratio,'-*')
+    axs[i].hlines(1,0,3,color='k')
+    axs[i].set_ylim([.7,1.3])
+    
+    #axs[i].set_title('RMSE(NxN) / RMSE(FFP)',fontsize=10)
+    if i ==2:
+        axs[i].set_xlabel('NxN grid area')
+        axs[i].set_xticks([0,1,2,3],labels=['1x1','5x5','25x25','50x50'])
+    else:
+        axs[i].set_xticklabels([])
+    
+    if i ==0:
+        axs[i].legend(['PT-JPL','ALEXI'])
+    
+    
+plt.tight_layout()
+plt.savefig(fig_path + 'Fig_Error_ratios.svg', format="svg", bbox_inches="tight")  
+plt.show()
+
+
+df_perf[['AlexiFFP25','AlexiET1x1','AlexiET5x5','AlexiET25x25','AlexiET50x50']].plot.bar()
+
+df_perf[['JdayFFP25','JdayET1x1','JdayET5x5','JdayET25x25','JdayET50x50']].plot.bar()
+
+
+
+#%% crop maps with flux footprints overlaid 
+
+#df_everythinggood = df_good.dropna()
+df_everythinggood = df_good
 #only 9 images with "everything"!
-good_dates = df_everythinggood['Date']
+good_dates = df_everythinggood['NewDate']
 
 
 #use the UTM version of the ECOSTRESS rasters...
@@ -256,9 +337,6 @@ for date_val in good_dates:
     ax.axis(xmin = extent_tight[0], xmax=extent_tight[1], ymin=extent_tight[2], ymax=extent_tight[3])
     ax.scatter(tower_E, tower_N,color='r')
     ax.set_title(date_val)
-    #fig.colorbar(c0, ax=ax)
-    #ax.set_xticklabels([])
-    #ax.set_yticklabels([])
 
     #now, also plot the footprint
     try:
@@ -278,8 +356,8 @@ for date_val in good_dates:
             print('no 10m footprint')
             
     plt.tight_layout()
-    plt.savefig(fig_path + 'Fig_CropMap_'+str(date_val)+'.svg', format="svg", bbox_inches="tight")  
     plt.show()
+      
 
 #%%
 df_fractions['Date']=pd.to_datetime(df_fractions['Date']) 
@@ -324,7 +402,6 @@ plt.savefig(fig_path+"All_time_crop_fractions.pdf", format="pdf", bbox_inches="t
 #%%
 
 
-
 df_fractions['hour']=pd.DatetimeIndex(df_fractions['Date']).hour
 df_fractions['year']=pd.DatetimeIndex(df_fractions['Date']).year
 df_fractions['month']=pd.DatetimeIndex(df_fractions['Date']).month
@@ -341,9 +418,6 @@ frac_diff = np.asfarray(dfday.f_corn10m/dfday.f_corn25m)
 A_diff = np.asfarray(dfday.Area10m/dfday.Area25m)
 
 
-print(np.nanmedian(LE_diff))
-print(np.nanmedian(frac_diff))
-print(np.nanmedian(A_diff))
 
 #%% plot fetch area roses, also histograms for LE and crop fractions
 #uncomment bottom to plot wind roses (need to import windrose package)
@@ -371,6 +445,11 @@ dfrose = dfrose[(dfrose['Area25m']<=critval25)]
 dfrose = dfrose.dropna(subset = ['LE10m', 'LE25m', 'f_corn10m','f_corn25m'])
 
 dfrose_orig=dfrose
+
+
+#%%
+
+
 
 
 # for y in range(2021,2023):
